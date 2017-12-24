@@ -53,7 +53,6 @@ public class CardItemView extends FrameLayout {
             @Override
             public void onSpringUpdate(Spring spring) {
                 int xPos = (int) spring.getCurrentValue();
-                Log.d(TAG, "xPos:" + xPos);
                 setScreenX(xPos);
                 parentView.onViewPosChanged(CardItemView.this);
             }

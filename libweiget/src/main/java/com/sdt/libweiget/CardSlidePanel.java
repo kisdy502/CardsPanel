@@ -44,9 +44,9 @@ public class CardSlidePanel extends ViewGroup {
     private int panelHeight = 0; // 面板的高度
     private int childWith = 0; // 每一个子View对应的宽度
 
-    private static final float SCALE_STEP = 0.08f; // view叠加缩放的步长
-    private static final int MAX_SLIDE_DISTANCE_LINKAGE = 500; // 水平距离+垂直距离
-    private static final float XYRATE = 3f;  //x方向和y方向的速度比例关系
+    private static final float SCALE_STEP = 0.08f;                         // view叠加缩放的步长
+    private static final int MAX_SLIDE_DISTANCE_LINKAGE = 500;             // 水平距离+垂直距离
+    private static final float XYRATE = 3f;                                //x方向和y方向的速度比例关系
 
     private int itemMarginTop = 10; // 卡片距离顶部的偏移量
     private int bottomMarginTop = 40; // 底部按钮与卡片的margin值
@@ -137,7 +137,7 @@ public class CardSlidePanel extends ViewGroup {
         int count = adapter.getCount();
         for (int i = 0; i < VIEW_COUNT; i++) {
             if (i < count) {
-                adapter.bindView(viewList.get(i), i);
+                adapter.bindView(getChildAt(VIEW_COUNT - i - 1), i);
                 if (i == 0) {
                     savedFirstItemData = new WeakReference<>(adapter.getItem(i));
                 }
@@ -269,6 +269,19 @@ public class CardSlidePanel extends ViewGroup {
         return true;
     }
 
+    /**
+     * 必须要重写这个方法,不然滑动时候,不会飞出去
+     */
+    @Override
+    public void computeScroll() {
+        if (mDragHelper.continueSettling(true)) {
+            Log.i(TAG, "postInvalidateOnAnimation");
+            ViewCompat.postInvalidateOnAnimation(this);
+        } else {
+            Log.i(TAG, "do other thing");
+        }
+    }
+
 
     class MoveDetector extends GestureDetector.SimpleOnGestureListener {
 
@@ -295,7 +308,17 @@ public class CardSlidePanel extends ViewGroup {
             if (draggableArea == null) {
                 draggableArea = adapter.obtainDraggableArea(child);
             }
-            return true;
+            // 3. 判断是否可滑动
+            boolean shouldCapture = true;
+            if (null != draggableArea) {
+                shouldCapture = draggableArea.contains(downPoint.x, downPoint.y);
+            }
+
+            // 4. 如果确定要滑动，就让touch事件交给自己消费
+            if (shouldCapture) {
+                getParent().requestDisallowInterceptTouchEvent(shouldCapture);
+            }
+            return shouldCapture;
         }
 
         @Override
@@ -318,6 +341,67 @@ public class CardSlidePanel extends ViewGroup {
         public int clampViewPositionVertical(View child, int top, int dy) {
             return top;
         }
+
+
+        @Override
+        public void onViewPositionChanged(View changedView, int left, int top, int dx, int dy) {
+            Log.i(TAG, "left,top,dx,dy::" + left + "," + top + "," + dx + "," + dy);
+            processViewPostionChange(changedView);
+        }
+    }
+
+    /**
+     * 滑动时候,位置发生变化
+     * 处于下面的三个view也要跟随缩放
+     *
+     * @param changedView
+     */
+    private void processViewPostionChange(View changedView) {
+        int changeViewLeft = changedView.getLeft();
+        int changeViewTop = changedView.getTop();
+        int distance = Math.abs(changeViewTop - initViewY)
+                + Math.abs(changeViewLeft - initViewX);
+        float rate = distance / (float) MAX_SLIDE_DISTANCE_LINKAGE;
+
+        float rate1 = rate;
+        float rate2 = rate - 0.1f;
+
+        if (rate > 1) {
+            rate1 = 1;
+        }
+
+        if (rate2 < 0) {
+            rate2 = 0;
+        } else if (rate2 > 1) {
+            rate2 = 1;
+        }
+        Log.i(TAG, "rate1::" + rate1);
+        Log.i(TAG, "rate2::" + rate2);
+        ajustLinkageViewItem(rate1, 1);
+        ajustLinkageViewItem(rate2, 2);
+
+        //最下面的View
+        CardItemView bottomCardView = viewList.get(viewList.size() - 1);
+        bottomCardView.setAlpha(rate2);
+
+    }
+
+
+    private void ajustLinkageViewItem(float rate, int index) {
+        int currentPosY = yOffsetStep * index;
+        float currentScale = 1 - SCALE_STEP * index;
+
+        int nextPosY = yOffsetStep * (index - 1);
+        float nextScale = 1 - SCALE_STEP * (index - 1);
+
+        int offset = (int) (currentPosY + (nextPosY - currentPosY) * rate);
+        float scale = currentScale + (nextScale - currentScale) * rate;
+        Log.i(TAG, "scale::" + scale);
+        View ajustView = viewList.get(index);
+        ajustView.offsetTopAndBottom(offset - ajustView.getTop()
+                + initViewY);
+        ajustView.setScaleX(scale);
+        ajustView.setScaleY(scale);
     }
 
     /**
@@ -331,17 +415,16 @@ public class CardSlidePanel extends ViewGroup {
         int finalX = initViewX;
         int finalY = initViewY;
         int flyType = -1;
-        Log.d(TAG, "fx,fy::" + finalX + "," + finalY);
+        Log.i(TAG, "xvel,yvel::" + xvel + "," + yvel);
         //松开手指时,已经移动的距离
         int dx = changedView.getLeft() - initViewX;
         int dy = changedView.getTop() - initViewY;
         Log.d(TAG, "dx,dy::" + dx + "," + dy);
-        if (xvel > MAX_SLIDE_DISTANCE_LINKAGE && Math.abs(yvel) < xvel * XYRATE) {
+        if (xvel > MAX_SLIDE_DISTANCE_LINKAGE && Math.abs(yvel) <= xvel * XYRATE) {
             //x方向速度足够够大
             finalX = panelWidth;
-            finalY = yvel * (panelWidth - dx) / xvel;
-            int testY = yvel * (childWith + changedView.getLeft()) / xvel + changedView.getTop();
-            Log.d(TAG, "finalY,testY::" + finalY + "," + testY);
+            finalY = yvel * (panelWidth - dx) / xvel + changedView.getTop();
+            Log.i(TAG, "finalY::" + finalY);
             flyType = VANISH_TYPE_RIGHT;
         }
 
@@ -356,17 +439,21 @@ public class CardSlidePanel extends ViewGroup {
         if (finalX == initViewX) {
             changedView.animTo(initViewX, initViewY);
         } else {
+            Log.i(TAG, "准备消失动画");
             // 2. 向两边消失的动画
             releasedViewList.add(changedView);
+            Log.i(TAG, "finalX,finalY::" + finalX + "," + finalY);
             if (mDragHelper.smoothSlideViewTo(changedView, finalX, finalY)) {
                 ViewCompat.postInvalidateOnAnimation(this);
+            } else {
+                Log.i(TAG, "smoothSlideViewTo failed");
             }
         }
     }
 
+
     public void onViewPosChanged(CardItemView cardItemView) {
-
+        processViewPostionChange(cardItemView);
     }
-
 
 }

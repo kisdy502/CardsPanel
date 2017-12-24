@@ -35,6 +35,6 @@
         android:layout_height="match_parent"
         card:bottomMarginTop="38dp"
         card:itemMarginTop="10dp"
-        card:yOffsetStep="13dp" />
+        card:yOffsetStep="14dp" />
 
 </LinearLayout>

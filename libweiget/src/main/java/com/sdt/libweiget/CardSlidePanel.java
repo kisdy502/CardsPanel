@@ -6,9 +6,12 @@ import android.database.DataSetObserver;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.support.v4.view.GestureDetectorCompat;
+import android.support.v4.view.ViewCompat;
 import android.support.v4.widget.ViewDragHelper;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
@@ -18,7 +21,12 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
+
 /**
+ * 0
+ * 1
+ * 2
+ * 3
  * Created by Administrator on 2017/12/21.
  */
 
@@ -31,13 +39,14 @@ public class CardSlidePanel extends ViewGroup {
 
     /* 拖拽工具类 */
     private final ViewDragHelper mDragHelper; // 这个跟原生的ViewDragHelper差不多，我仅仅只是修改了Interpolator
-    private int initCenterViewX = 0, initCenterViewY = 0; // 最初时，中间View的x位置,y位置
-    private int allWidth = 0; // 面板的宽度
-    private int allHeight = 0; // 面板的高度
+    private int initViewX = 0, initViewY = 0; // 最初时，中间View的x位置,y位置
+    private int panelWidth = 0; // 面板的宽度
+    private int panelHeight = 0; // 面板的高度
     private int childWith = 0; // 每一个子View对应的宽度
 
     private static final float SCALE_STEP = 0.08f; // view叠加缩放的步长
     private static final int MAX_SLIDE_DISTANCE_LINKAGE = 500; // 水平距离+垂直距离
+    private static final float XYRATE = 3f;  //x方向和y方向的速度比例关系
 
     private int itemMarginTop = 10; // 卡片距离顶部的偏移量
     private int bottomMarginTop = 40; // 底部按钮与卡片的margin值
@@ -83,6 +92,10 @@ public class CardSlidePanel extends ViewGroup {
         ViewConfiguration configuration = ViewConfiguration.get(getContext());
         mTouchSlop = configuration.getScaledTouchSlop();
 
+        moveDetector = new GestureDetectorCompat(context,
+                new MoveDetector());
+        moveDetector.setIsLongpressEnabled(false);
+
         getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
             @Override
             public void onGlobalLayout() {
@@ -93,9 +106,11 @@ public class CardSlidePanel extends ViewGroup {
         });
     }
 
-
+    /**
+     * 数据绑定
+     */
     private void doBindAdapter() {
-        if (adapter == null || allWidth <= 0 || allHeight <= 0) {
+        if (adapter == null || panelWidth <= 0 || panelHeight <= 0) {
             return;
         }
 
@@ -148,6 +163,10 @@ public class CardSlidePanel extends ViewGroup {
         return adapter;
     }
 
+    private void orderViewStack() {
+
+    }
+
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
@@ -158,9 +177,9 @@ public class CardSlidePanel extends ViewGroup {
                 resolveSizeAndState(maxWidth, widthMeasureSpec, 0),
                 resolveSizeAndState(maxHeight, heightMeasureSpec, 0));
 
-        allWidth = getMeasuredWidth();
-        allHeight = getMeasuredHeight();
-        Log.d(TAG, "allWidth::" + allWidth + ",allHeight::" + allHeight);
+        panelWidth = getMeasuredWidth();
+        panelHeight = getMeasuredHeight();
+        Log.d(TAG, "panelWidth::" + panelWidth + ",panelHeight::" + panelHeight);
     }
 
     @Override
@@ -177,7 +196,7 @@ public class CardSlidePanel extends ViewGroup {
             // 2. 调整位置
             int offset = yOffsetStep * i;
             float scale = 1 - SCALE_STEP * i;
-            Log.d(TAG, "i::" + i + ",scale::" + scale);
+            Log.d(TAG, "i::" + i + ",scale::" + scale + ",offset::" + offset);
             viewItem.offsetTopAndBottom(offset);
 
             // 3. 调整缩放、重心等
@@ -186,16 +205,168 @@ public class CardSlidePanel extends ViewGroup {
             viewItem.setScaleX(scale);
             viewItem.setScaleY(scale);
 
+            Log.d(TAG, "i::" + i + ",getLeft::" + viewItem.getLeft() + ",getTop::" + viewItem.getTop());
+
+        }
+
+        if (childCount > 0) {
+            // 初始化一些中间参数
+            initViewX = viewList.get(0).getLeft();
+            initViewY = viewList.get(0).getTop();
+            childWith = viewList.get(0).getMeasuredWidth();
+            Log.d(TAG, "initViewX::" + initViewX + ",initViewY::" + initViewY + ",childWith::" + childWith);
         }
     }
 
+    /**
+     * 分发事件 记录下首次点击的位置
+     *
+     * @param ev
+     * @return
+     */
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        Log.d(TAG, "dispatchTouchEvent");
+        int action = ev.getActionMasked();
+        // 按下时保存坐标信息
+        if (action == MotionEvent.ACTION_DOWN) {
+            this.downPoint.x = (int) ev.getX();
+            this.downPoint.y = (int) ev.getY();
+            Log.d(TAG, "downPoint.x::" + downPoint.x + ",downPoint.y::" + downPoint.y);
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+
+    /* touch事件的拦截与处理都交给mDraghelper来处理 */
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent ev) {
+        Log.d(TAG, "onInterceptTouchEvent");
+        boolean shouldIntercept = mDragHelper.shouldInterceptTouchEvent(ev);
+        boolean moveFlag = moveDetector.onTouchEvent(ev);
+        Log.i(TAG, "shouldIntercept::" + shouldIntercept);
+        Log.i(TAG, "moveFlag::" + moveFlag);
+        int action = ev.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            // ACTION_DOWN的时候就对view重新排序
+            if (mDragHelper.getViewDragState() == ViewDragHelper.STATE_SETTLING) {
+                mDragHelper.abort();
+            }
+            orderViewStack();
+            // 保存初次按下时arrowFlagView的Y坐标
+            // action_down时就让mDragHelper开始工作，否则有时候导致异常
+            mDragHelper.processTouchEvent(ev);
+        }
+        return shouldIntercept && moveFlag;
+    }
+
+
+    @Override
+    public boolean onTouchEvent(MotionEvent e) {
+        Log.d(TAG, "onTouchEvent");
+        // 统一交给mDragHelper处理，由DragHelperCallback实现拖动效果
+        // 该行代码可能会抛异常，正式发布时请将这行代码加上try catch
+        mDragHelper.processTouchEvent(e);
+        return true;
+    }
+
+
+    class MoveDetector extends GestureDetector.SimpleOnGestureListener {
+
+        @Override
+        public boolean onScroll(MotionEvent e1, MotionEvent e2, float dx, float dy) {
+            Log.d(TAG, "onScroll");
+            // 拖动了，touch不往下传递
+            boolean isMove = Math.abs(dy) + Math.abs(dx) > mTouchSlop;
+            Log.d(TAG, "isMove::" + isMove);
+            return isMove;
+        }
+    }
 
     class DragHelperCallback extends ViewDragHelper.Callback {
 
         @Override
         public boolean tryCaptureView(View child, int pointerId) {
-            return false;
+            if (adapter == null || adapter.getCount() == 0 || getChildCount() == 0 || child.getScaleX() < 1) {
+                return false;
+            }
+
+            // 2. 获取可滑动区域
+            ((CardItemView) child).onStartDragging();
+            if (draggableArea == null) {
+                draggableArea = adapter.obtainDraggableArea(child);
+            }
+            return true;
+        }
+
+        @Override
+        public int getViewHorizontalDragRange(View child) {
+            // 这个用来控制拖拽过程中松手后，自动滑行的速度
+            return 256;
+        }
+
+        @Override
+        public void onViewReleased(View releasedChild, float xvel, float yvel) {
+            animToSide((CardItemView) releasedChild, (int) xvel, (int) yvel);
+        }
+
+        @Override
+        public int clampViewPositionHorizontal(View child, int left, int dx) {
+            return left;
+        }
+
+        @Override
+        public int clampViewPositionVertical(View child, int top, int dy) {
+            return top;
         }
     }
+
+    /**
+     * 松开手之后依靠初速度自己运动
+     *
+     * @param changedView
+     * @param xvel        x方向的初速度
+     * @param yvel        y方向的初速度
+     */
+    private void animToSide(CardItemView changedView, int xvel, int yvel) {
+        int finalX = initViewX;
+        int finalY = initViewY;
+        int flyType = -1;
+        Log.d(TAG, "fx,fy::" + finalX + "," + finalY);
+        //松开手指时,已经移动的距离
+        int dx = changedView.getLeft() - initViewX;
+        int dy = changedView.getTop() - initViewY;
+        Log.d(TAG, "dx,dy::" + dx + "," + dy);
+        if (xvel > MAX_SLIDE_DISTANCE_LINKAGE && Math.abs(yvel) < xvel * XYRATE) {
+            //x方向速度足够够大
+            finalX = panelWidth;
+            finalY = yvel * (panelWidth - dx) / xvel;
+            int testY = yvel * (childWith + changedView.getLeft()) / xvel + changedView.getTop();
+            Log.d(TAG, "finalY,testY::" + finalY + "," + testY);
+            flyType = VANISH_TYPE_RIGHT;
+        }
+
+        // 如果斜率太高，就折中处理
+        if (finalY > panelHeight) {
+            finalY = panelHeight;
+        } else if (finalY < -panelHeight / 2) {
+            finalY = -panelHeight / 2;
+        }
+
+        // 如果没有飞向两侧，而是回到了中间，需要谨慎处理
+        if (finalX == initViewX) {
+            changedView.animTo(initViewX, initViewY);
+        } else {
+            // 2. 向两边消失的动画
+            releasedViewList.add(changedView);
+            if (mDragHelper.smoothSlideViewTo(changedView, finalX, finalY)) {
+                ViewCompat.postInvalidateOnAnimation(this);
+            }
+        }
+    }
+
+    public void onViewPosChanged(CardItemView cardItemView) {
+
+    }
+
 
 }

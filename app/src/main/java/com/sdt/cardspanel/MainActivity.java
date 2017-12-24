@@ -1,7 +1,9 @@
 package com.sdt.cardspanel;
 
+import android.graphics.Rect;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -17,7 +19,6 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
-
     private String imagePaths[] = {"file:///android_asset/wall01.jpg",
             "file:///android_asset/wall02.jpg", "file:///android_asset/wall03.jpg",
             "file:///android_asset/wall04.jpg", "file:///android_asset/wall05.jpg",
@@ -26,8 +27,8 @@ public class MainActivity extends AppCompatActivity {
             "file:///android_asset/wall10.jpg", "file:///android_asset/wall11.jpg",
             "file:///android_asset/wall12.jpg"}; // 12个图片资源
 
-    private String names[] = {"郭富城", "刘德华", "张学友", "李连杰", "成龙", "谢霆锋", "李易峰",
-            "霍建华", "胡歌", "曾志伟", "吴孟达", "梁朝伟"}; // 12个人名
+    private String names[] = {"AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF", "GGGG",
+            "HHHH", "IIII", "JJJJ", "KKKK", "LLLL"}; // 12个人名
 
     private List<CardDataItem> dataList = new ArrayList<>();
 
@@ -51,9 +52,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void init() {
         prepareDataList();
-        cardAdapter=new TCardAdapter();
+        cardAdapter = new TCardAdapter();
         slidePanel.setAdapter(cardAdapter);
-
     }
 
     class TCardAdapter extends CardAdapter {
@@ -85,6 +85,19 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public Object getItem(int index) {
             return dataList.get(index);
+        }
+
+        @Override
+        public Rect obtainDraggableArea(View view) {
+            View contentView = view.findViewById(R.id.card_item_content);
+            View topLayout = view.findViewById(R.id.card_top_layout);
+            View bottomLayout = view.findViewById(R.id.card_bottom_layout);
+            int left = view.getLeft() + contentView.getPaddingLeft() + topLayout.getPaddingLeft();
+            int right = view.getRight() - contentView.getPaddingRight() - topLayout.getPaddingRight();
+            int top = view.getTop() + contentView.getPaddingTop() + topLayout.getPaddingTop();
+            int bottom = view.getBottom() - contentView.getPaddingBottom() - bottomLayout.getPaddingBottom();
+            Log.d("mainActivity", "l.r.t.b:" + left + "," + top + "," + right + "," + bottom);
+            return new Rect(left, top, right, bottom);
         }
     }
 
@@ -128,10 +141,10 @@ public class MainActivity extends AppCompatActivity {
         }
 
         public void bindData(CardDataItem itemData) {
-            Glide.with(MainActivity.this).load(itemData.imagePath).into(imageView);
             userNameTv.setText(itemData.userName);
             imageNumTv.setText(itemData.imageNum + "");
             likeNumTv.setText(itemData.likeNum + "");
+            Glide.with(MainActivity.this).load(itemData.imagePath).into(imageView);
         }
     }
 
